@@ -1,0 +1,256 @@
+ install.packages("lsmeans", dependencies=TRUE, repos='http://cran.rstudio.com/')
+
+install.packages("car", dependencies=TRUE, repos='http://cran.rstudio.com/')
+library(car)
+library(lsmeans)
+
+
+randomization <- read.table("C:/Users/Moumita/Documents/InterviewPrep/Bayer/data/randomization.csv", header=TRUE, sep=",")
+
+
+efficacy <- read.table("C:/Users/Moumita/Documents/InterviewPrep/Bayer/data/efficacy.csv", header=TRUE, sep=",")
+
+
+subject <- read.table("C:/Users/Moumita/Documents/InterviewPrep/Bayer/data/subject.csv", header=TRUE, sep=",")
+
+
+#Merge datasets by subject
+random_eff <- merge(randomization, efficacy, by = "subject")
+allsubjects<- merge(random_eff , subject, by = "subject")
+
+
+#Create arm1 as summy for active=1 and if placebo then arm10
+allsubjects$arm1<- NA
+allsubjects$arm1[allsubjects$arm=="ACTIVE"] <- 1
+allsubjects$arm1[allsubjects$arm=="PLACEBO"] <- 0
+
+#Create country dummy variables
+allsubjects$country_A<- 0
+allsubjects$country_B<- 0
+allsubjects$country_C<- 0
+allsubjects$country_D<- 0
+allsubjects$country_E<- 0
+allsubjects$country_F<- 0
+allsubjects$country_G<- 0
+allsubjects$country_H<- 0
+allsubjects$country_I<- 0
+allsubjects$country_J<- 0
+
+allsubjects$country_A[allsubjects$country=="A"] <- 1
+allsubjects$country_B[allsubjects$country=="B"] <- 1
+allsubjects$country_C[allsubjects$country=="C"] <- 1
+allsubjects$country_D[allsubjects$country=="D"] <- 1
+allsubjects$country_E[allsubjects$country=="E"] <- 1
+allsubjects$country_F[allsubjects$country=="F"] <- 1
+allsubjects$country_G[allsubjects$country=="G"] <- 1
+allsubjects$country_H[allsubjects$country=="H"] <- 1
+allsubjects$country_I[allsubjects$country=="I"] <- 1
+allsubjects$country_J[allsubjects$country=="J"] <- 1
+
+
+#Create eye color dummy variables
+allsubjects$eyecolour_Black<- 0
+allsubjects$eyecolour_Blue<- 0
+allsubjects$eyecolour_Brown<- 0
+allsubjects$eyecolour_Black[allsubjects$country=="BLACK"] <- 1
+allsubjects$eyecolour_Blue[allsubjects$country=="BLUE"] <- 1
+allsubjects$eyecolour_Brown[allsubjects$country=="BROWN"] <- 1
+
+#Create TissueUseHigh and Medium 
+allsubjects$tissueUse_High<- 0
+allsubjects$tissueUse_Medium<- 0
+allsubjects$tissueUse_High[allsubjects$tissue.use=="HIGH"] <- 1
+allsubjects$tissueUse_Medium[allsubjects$tissue.use=="MEDIUM"] <- 1
+
+
+#Create nosebleeds2 as Low(1), med(2), high(3) from nosebleeds by assessing their frequency distribution
+table(allsubjects$nosebleeds)
+quantile(allsubjects$nosebleeds)
+allsubjects$nosebleeds2<- 0
+allsubjects$nosebleeds2[allsubjects$nosebleeds<=0] <- 1
+allsubjects$nosebleeds2[allsubjects$nosebleeds >0 & allsubjects$nosebleeds <=1] <- 2
+allsubjects$nosebleeds2[allsubjects$nosebleeds >1 & allsubjects$nosebleeds <=5] <- 3
+
+
+
+#check the frequency distribution of mucus viscosity and create low, medium, high versions
+quantile(allsubjects$mucus.viscosity, probs = seq(0, 1, 0.25), na.rm=TRUE )
+allsubjects$mucus_low <- 0
+allsubjects$mucus_med <- 0
+allsubjects$mucus_high <- 0
+allsubjects$mucus_highmed <- 0
+allsubjects$mucus_low[allsubjects$mucus.viscosity <= 0.613] <- 1
+allsubjects$mucus_med[allsubjects$mucus.viscosity > 0.613 &allsubjects$mucus.viscosity < 1.6956] <- 1
+allsubjects$mucus_high[allsubjects$mucus.viscosity >= 1.6956] <- 1
+allsubjects$mucus_highmed[allsubjects$mucus.viscosity > 0.613] <- 1
+
+
+#Create Previous year NB Low, and High versions
+table(allsubjects$previous.year)
+quantile(allsubjects$previous.year)
+allsubjects$previousyear_low <- 0
+allsubjects$previousyear_high <- 0
+allsubjects$previousyear_low[allsubjects$previous.year <= 2] <- 1
+allsubjects$previousyear_high[allsubjects$previous.year > 2] <- 1
+
+
+
+# Freq plot of mucus viscosity and nosebleeds by treatment arm
+plot(x   = allsubjects$mucus.viscosity, 
+     y   = allsubjects$nosebleeds, 
+     col = allsubjects$arm, 
+     pch = 16,
+     xlab = "Mucus Viscosity",
+     ylab = "Nosebleeds")
+
+legend('bottomright', 
+       legend = levels(allsubjects$arm), 
+       col = 1:3, 
+       cex = 1,    
+       pch = 16)
+
+
+
+
+
+# Freq plot of Previous year nosebleeds and current nosebleeds by treatment arm
+plot(x   = allsubjects$previous.year, 
+     y   = allsubjects$nosebleeds, 
+     col = allsubjects$arm, 
+     pch = 16,
+     xlab = "Previous Year Nosebleeds",
+     ylab = "Nosebleeds")
+
+legend('bottomright', 
+       legend = levels(allsubjects$arm), 
+       col = 1:3, 
+       cex = 1,    
+       pch = 16)
+
+
+
+#Frequency table of mucus viscosity, previous year nosebleeds, tissue use 
+table(allsubjects$mucus.viscosity)
+table(allsubjects$previous.year)
+table(allsubjects$tissue.use)
+
+
+
+# Evaluate percentiles for mucus viscosity, previous year NB 
+quantile(allsubjects$mucus.viscosity, na.rm= TRUE)
+quantile(allsubjects$previous.year)
+
+
+
+
+
+#ANCOVA Model 1 with covariate mucus.viscosity and with interaction
+options(contrasts = c("contr.treatment", "contr.poly"))
+library(car)
+model1 <- aov(nosebleeds~ arm + mucus.viscosity + arm:mucus.viscosity, data=allsubjects)
+Anova(model1, type="III")
+summary.lm(model1)
+lsmeans(model1,"arm")
+
+
+#ANCOVA with covariate (high) mucus viscosity
+options(contrasts = c("contr.treatment", "contr.poly"))
+library(car)
+model1_2 <- aov(nosebleeds~arm + mucus_high + arm:mucus_high, data=allsubjects)
+Anova(model1_2, type="III")
+summary.lm(model1_2)
+lsmeans(model1_2,"arm")
+
+
+# Model 3 ANCOVA with covariate Tissue Use
+options(contrasts = c("contr.treatment", "contr.poly"))
+library(car)
+model1_2 <- aov(nosebleeds~arm + tissue.use + arm:tissue.use, data=allsubjects)
+Anova(model1_2, type="III")
+summary.lm(model1_2)
+lsmeans(model1_2,"arm")
+
+
+# Model4: ANCOVA with covariate Tissue Use
+options(contrasts = c("contr.treatment", "contr.poly"))
+library(car)
+model1_2 <- aov(nosebleeds~arm + tissueUse_High + arm:tissueUse_High, data=allsubjects)
+Anova(model1_2, type="III")
+summary.lm(model1_2)
+lsmeans(model1_2,"arm")
+
+# Model 4 ANCOVA with covariate Tissue Use without interaction term as it is not significant in the model above
+options(contrasts = c("contr.treatment", "contr.poly"))
+library(car)
+model1_2 <- aov(nosebleeds~arm + tissueUse_High , data=allsubjects)
+Anova(model1_2, type="III")
+summary.lm(model1_2)
+lsmeans(model1_2,"arm")
+
+
+
+
+#Model 5 ANCOVA with covariate High mucus viscosity, high tissue use
+model2 <- aov(nosebleeds~arm + mucus_high + tissueUse_High , data=allsubjects)
+Anova(model2, type="III")
+summary.lm(model2)
+lsmeans(model2,"arm")
+
+
+#ANCOVA with covariate previous year nosebleeds
+model2 <- aov(nosebleeds~arm + previous.year + arm:previous.year, data=allsubjects)
+Anova(model2, type="III")
+summary.lm(model2)
+lsmeans(model2,"arm")
+
+
+
+#ANCOVA with Med high mucus, previous year, high tissue use
+model3 <- aov(nosebleeds~arm + mucus_highmed + previous.year + tissueUse_High, data=allsubjects)
+Anova(model3, type="III")
+summary.lm(model3)
+lsmeans(model3,"arm")
+
+
+
+#ANCOVA with Med high mucus, high previous year, high tissue use
+model3 <- aov(nosebleeds~arm + mucus_highmed + previousyear_high + tissueUse_High, data=allsubjects)
+Anova(model3, type="III")
+summary.lm(model3)
+lsmeans(model3,"arm")
+
+
+
+
+
+
+#regression on nosebleeds on all subjects (active and placebo) data- across all tissue users
+fit2 <- lm(nosebleeds ~  previous.year + arm1 + mucus.viscosity + tissueUse_High+ country_A + country_B+ country_C + country_D + country_E + country_F + country_G + country_I, data=allsubjects)
+summary.lm(fit2)
+#check VIF
+vif(lm(nosebleeds ~  previous.year + arm1 + mucus.viscosity + tissueUse_High+ country_A  + country_B+ country_C + country_D + country_E + country_F + country_G + country_I, data=allsubjects))
+
+
+
+
+#regression on nosebleeds on all subjects (active and placebo) data- across all tissue users
+fit2 <- lm(nosebleeds ~  previous.year + arm1 + mucus_highmed + tissueUse_High+ country_A + country_B+ country_C + country_D + country_E + country_F + country_G + country_I, data=allsubjects)
+summary.lm(fit2)
+#check VIF
+vif(lm(nosebleeds ~  previous.year + arm1 + mucus_highmed  + tissueUse_High+ country_A  + country_B+ country_C + country_D + country_E + country_F + country_G + country_I, data=allsubjects))
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
